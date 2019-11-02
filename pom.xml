@@ -3,7 +3,7 @@
 
     <groupId>com.zegelin.cassandra-exporter</groupId>
     <artifactId>exporter-parent</artifactId>
-    <version>0.9.9-SNAPSHOT</version>
+    <version>0.9.9-CUSTOM</version>
     <packaging>pom</packaging>
 
     <name>Cassandra Exporter Parent</name>
@@ -41,7 +41,7 @@
             <dependency>
                 <groupId>com.zegelin.cassandra-exporter</groupId>
                 <artifactId>common</artifactId>
-                <version>0.9.9-SNAPSHOT</version>
+                <version>0.9.9-CUSTOM</version>
                 <exclusions>
                     <exclusion>
                         <groupId>org.glassfish.hk2.external</groupId>
