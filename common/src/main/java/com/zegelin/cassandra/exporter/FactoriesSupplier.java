@@ -564,6 +564,7 @@ public class FactoriesSupplier implements Supplier<List<Factory>> {
             builder.add(cacheMetricFactory(functionalCollectorConstructor(meterAsCounter()), "Requests", "requests_total", null));
             builder.add(cacheMetricFactory(functionalCollectorConstructor(numericGaugeAsGauge()), "Size", "estimated_size_bytes", null));
             builder.add(cacheMetricFactory(functionalCollectorConstructor(numericGaugeAsGauge()), "Entries", "entries", null));
+            builder.add(cacheMetricFactory(functionalCollectorConstructor(numericGaugeAsGauge()), "OneMinuteCacheHitRate", "oneminutehitrate", null));
 
             // TODO: somehow make hits/misses common across all caches?
             // org.apache.cassandra.metrics.CacheMetrics
@@ -572,6 +573,7 @@ public class FactoriesSupplier implements Supplier<List<Factory>> {
             // org.apache.cassandra.metrics.CacheMissMetrics
             // "Misses" -- ignored, as "MissLatency" also includes a total count
             builder.add(cacheMetricFactory(timerAsSummaryCollectorConstructor(), "MissLatency", "miss_latency_seconds", null));
+            // Missing org.apache.cassandra.metrics:type=Streaming
         }
 
 
