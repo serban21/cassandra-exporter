@@ -465,7 +465,7 @@ public class FactoriesSupplier implements Supplier<List<Factory>> {
             builder.add(cacheMetricFactory(functionalCollectorConstructor(meterAsCounter()), "Requests", "requests_total", null));
             builder.add(cacheMetricFactory(functionalCollectorConstructor(numericGaugeAsGauge()), "Size", "estimated_size_bytes", null));
             builder.add(cacheMetricFactory(functionalCollectorConstructor(numericGaugeAsGauge()), "Entries", "entries", null));
-            builder.add(cacheMetricFactory(functionalCollectorConstructor(numericGaugeAsGauge()), "OneMinuteCacheHitRate", "oneminutehitrate", null));
+            builder.add(cacheMetricFactory(functionalCollectorConstructor(numericGaugeAsGauge()), "OneMinuteHitRate", "oneminutehitrate", null));
 
             // TODO: somehow make hits/misses common across all caches?
             // org.apache.cassandra.metrics.CacheMetrics
