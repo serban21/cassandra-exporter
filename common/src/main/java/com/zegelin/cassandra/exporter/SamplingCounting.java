@@ -12,5 +12,5 @@ import java.util.stream.Stream;
 public interface SamplingCounting {
     long getCount();
 
-    Iterable<Interval> getIntervals();
+    Stream<Interval> getIntervals();
 }

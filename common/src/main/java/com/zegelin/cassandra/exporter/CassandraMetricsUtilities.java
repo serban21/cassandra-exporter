@@ -4,7 +4,6 @@ import com.codahale.metrics.Counting;
 import com.codahale.metrics.Metric;
 import com.codahale.metrics.Sampling;
 import com.codahale.metrics.Snapshot;
-import com.google.common.collect.ImmutableList;
 import com.zegelin.jmx.NamedObject;
 import com.zegelin.prometheus.domain.Interval;
 import org.apache.cassandra.metrics.CassandraMetricsRegistry;
@@ -13,10 +12,9 @@ import org.apache.cassandra.metrics.CassandraMetricsRegistry.JmxTimerMBean;
 
 import java.lang.reflect.Field;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.stream.Stream;
 
 @SuppressWarnings("Duplicates")
 public class CassandraMetricsUtilities {
@@ -65,26 +63,14 @@ public class CassandraMetricsUtilities {
             }
 
             @Override
-            public Iterable<Interval> getIntervals() {
-                /*
-                  Cassandra's JmxTimerMBean converts the percentile values to a parameterised duration unit,
-                  (currently the only usage is microseconds), which differs to the values returned by
-                  Sampling.getSnapshot() (which are always in nanoseconds).
-
-                  The conversion from nanoseconds -> seconds happens at a later stage. To keep things simple, we pay the
-                  penalty when running out-of-process to convert from nanoseconds-><duration-unit>->nanoseconds
-                  and then eventually to seconds!
-                 */
-                final TimeUnit durationUnit = TimeUnit.valueOf(timer.getDurationUnit().toUpperCase(Locale.US));
-                final float durationFactor = durationUnit.toNanos(1L);
-
-                return ImmutableList.of(
-                        new Interval(Interval.Quantile.P_50, (float) timer.get50thPercentile() * durationFactor),
-                        new Interval(Interval.Quantile.P_75, (float) timer.get75thPercentile() * durationFactor),
-                        new Interval(Interval.Quantile.P_95, (float) timer.get95thPercentile() * durationFactor),
-                        new Interval(Interval.Quantile.P_98, (float) timer.get98thPercentile() * durationFactor),
-                        new Interval(Interval.Quantile.P_99, (float) timer.get99thPercentile() * durationFactor),
-                        new Interval(Interval.Quantile.P_99_9, (float) timer.get999thPercentile() * durationFactor)
+            public Stream<Interval> getIntervals() {
+                return Stream.of(
+                        new Interval(Interval.Quantile.P_50, (float) timer.get50thPercentile()),
+                        new Interval(Interval.Quantile.P_75, (float) timer.get75thPercentile()),
+                        new Interval(Interval.Quantile.P_95, (float) timer.get95thPercentile()),
+                        new Interval(Interval.Quantile.P_98, (float) timer.get98thPercentile()),
+                        new Interval(Interval.Quantile.P_99, (float) timer.get99thPercentile()),
+                        new Interval(Interval.Quantile.P_99_9, (float) timer.get999thPercentile())
                 );
             }
         };
@@ -98,8 +84,8 @@ public class CassandraMetricsUtilities {
             }
 
             @Override
-            public Iterable<Interval> getIntervals() {
-                return ImmutableList.of(
+            public Stream<Interval> getIntervals() {
+                return Stream.of(
                         new Interval(Interval.Quantile.P_50, (float) histogram.get50thPercentile()),
                         new Interval(Interval.Quantile.P_75, (float) histogram.get75thPercentile()),
                         new Interval(Interval.Quantile.P_95, (float) histogram.get95thPercentile()),
@@ -112,7 +98,7 @@ public class CassandraMetricsUtilities {
     }
 
 
-    static <X extends Sampling & Counting> SamplingCounting adaptSamplingCounting(final X metric) {
+    static <X extends Sampling & Counting> SamplingCounting adapt(final X metric) {
         return new SamplingCounting() {
             @Override
             public long getCount() {
@@ -120,7 +106,7 @@ public class CassandraMetricsUtilities {
             }
 
             @Override
-            public Iterable<Interval> getIntervals() {
+            public Stream<Interval> getIntervals() {
                 final Snapshot snapshot = metric.getSnapshot();
 
                 return Interval.asIntervals(Interval.Quantile.STANDARD_PERCENTILES, q -> (float) snapshot.getValue(q.value));
@@ -135,7 +121,7 @@ public class CassandraMetricsUtilities {
      */
     private static <RawT extends Sampling & Counting, MBeanT> NamedObject<SamplingCounting> mBeanAsSamplingCounting(final NamedObject<?> mBean, final Function<MBeanT, SamplingCounting> mBeanAdapterFunction) {
         try {
-            return CassandraMetricsUtilities.<RawT>metricForMBean(mBean).map((n, o) -> adaptSamplingCounting(o));
+            return CassandraMetricsUtilities.<RawT>metricForMBean(mBean).map((n, o) -> adapt(o));
 
         } catch (final Exception e) {
             return mBean.<MBeanT>cast().map((n, o) -> mBeanAdapterFunction.apply(o));

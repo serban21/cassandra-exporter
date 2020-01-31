@@ -1,7 +1,5 @@
 package com.zegelin.prometheus.domain;
 
-import com.google.common.collect.ImmutableList;
-
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -9,10 +7,10 @@ import java.util.stream.Stream;
 
 public class SummaryMetricFamily extends MetricFamily<SummaryMetricFamily.Summary> {
     public SummaryMetricFamily(final String name, final String help, final Stream<Summary> metrics) {
-        this(name, help, () -> metrics);
+        super(name, help, metrics);
     }
 
-    SummaryMetricFamily(final String name, final String help, final Supplier<Stream<Summary>> metricsStreamSupplier) {
+    private SummaryMetricFamily(final String name, final String help, final Supplier<Stream<Summary>> metricsStreamSupplier) {
         super(name, help, metricsStreamSupplier);
     }
 
@@ -22,7 +20,7 @@ public class SummaryMetricFamily extends MetricFamily<SummaryMetricFamily.Summar
     }
 
     @Override
-    public SummaryMetricFamily cachedCopy() {
+    public MetricFamily<Summary> cache() {
         final List<Summary> metrics = metrics().collect(Collectors.toList());
 
         return new SummaryMetricFamily(name, help, metrics::stream);
@@ -31,14 +29,14 @@ public class SummaryMetricFamily extends MetricFamily<SummaryMetricFamily.Summar
     public static class Summary extends Metric {
         public final float sum;
         public final float count;
-        public final Iterable<Interval> quantiles;
+        public final Stream<Interval> quantiles;
 
-        public Summary(final Labels labels, final float sum, final float count, final Iterable<Interval> quantiles) {
+        public Summary(final Labels labels, final float sum, final float count, final Stream<Interval> quantiles) {
             super(labels);
 
             this.sum = sum;
             this.count = count;
-            this.quantiles = ImmutableList.copyOf(quantiles);
+            this.quantiles = quantiles;
         }
     }
 }

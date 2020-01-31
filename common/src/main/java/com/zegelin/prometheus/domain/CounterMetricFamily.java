@@ -7,10 +7,10 @@ import java.util.stream.Stream;
 
 public class CounterMetricFamily extends MetricFamily<NumericMetric> {
     public CounterMetricFamily(final String name, final String help, final Stream<NumericMetric> metrics) {
-        this(name, help, () -> metrics);
+        super(name, help, metrics);
     }
 
-    CounterMetricFamily(final String name, final String help, final Supplier<Stream<NumericMetric>> metricsStreamSupplier) {
+    private CounterMetricFamily(final String name, final String help, final Supplier<Stream<NumericMetric>> metricsStreamSupplier) {
         super(name, help, metricsStreamSupplier);
     }
 
@@ -20,7 +20,7 @@ public class CounterMetricFamily extends MetricFamily<NumericMetric> {
     }
 
     @Override
-    public CounterMetricFamily cachedCopy() {
+    public MetricFamily<NumericMetric> cache() {
         final List<NumericMetric> metrics = metrics().collect(Collectors.toList());
 
         return new CounterMetricFamily(name, help, metrics::stream);

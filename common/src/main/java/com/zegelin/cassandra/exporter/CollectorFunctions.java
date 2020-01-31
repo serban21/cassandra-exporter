@@ -1,6 +1,5 @@
 package com.zegelin.cassandra.exporter;
 
-import com.google.common.collect.Iterables;
 import com.zegelin.function.FloatFloatFunction;
 import com.zegelin.cassandra.exporter.collector.dynamic.FunctionalMetricFamilyCollector.CollectorFunction;
 import com.zegelin.cassandra.exporter.collector.dynamic.FunctionalMetricFamilyCollector.LabeledObjectGroup;
@@ -140,7 +139,7 @@ public final class CollectorFunctions {
 
                         final EstimatedHistogram histogram = new EstimatedHistogram(bucketData);
 
-                        final Iterable<Interval> quantiles = Interval.asIntervals(Interval.Quantile.STANDARD_PERCENTILES, q -> bucketScaleFunction.apply((float) histogram.percentile(q.value)));
+                        final Stream<Interval> quantiles = Interval.asIntervals(Interval.Quantile.STANDARD_PERCENTILES, q -> bucketScaleFunction.apply((float) histogram.percentile(q.value)));
 
                         return new SummaryMetricFamily.Summary(e.labels, Float.NaN, histogram.count(), quantiles);
                     });
@@ -164,7 +163,8 @@ public final class CollectorFunctions {
                         final SamplingCounting samplingCounting = e.getValue();
                     })
                     .map(e -> {
-                        final Iterable<Interval> quantiles = Iterables.transform(e.samplingCounting.getIntervals(), i -> i.transform(quantileScaleFunction));
+                        final Stream<Interval> quantiles = e.samplingCounting.getIntervals()
+                                .map(i -> i.transform(quantileScaleFunction));
 
                         return new SummaryMetricFamily.Summary(e.labels, Float.NaN, e.samplingCounting.getCount(), quantiles);
                     });

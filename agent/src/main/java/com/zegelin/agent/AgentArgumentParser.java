@@ -49,7 +49,6 @@ public final class AgentArgumentParser {
 
                     if (c == '"') {
                         stateStack.push(State.QUOTED);
-                        continue;
                     }
 
                     break;
@@ -57,12 +56,10 @@ public final class AgentArgumentParser {
                 case QUOTED:
                     if (c == '"') {
                         stateStack.pop();
-                        continue;
                     }
 
                     if (c == '\\') {
                         stateStack.push(State.ESCAPED);
-                        continue;
                     }
 
                     break;

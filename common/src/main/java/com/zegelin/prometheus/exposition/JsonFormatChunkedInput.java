@@ -1,10 +1,12 @@
-package com.zegelin.prometheus.exposition.json;
+package com.zegelin.prometheus.exposition;
 
 import com.google.common.base.Stopwatch;
 import com.google.common.escape.CharEscaperBuilder;
 import com.google.common.escape.Escaper;
+import com.zegelin.netty.Floats;
 import com.zegelin.prometheus.domain.*;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.stream.ChunkedInput;
@@ -17,8 +19,6 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Stream;
-
-import static com.zegelin.prometheus.exposition.json.JsonFragment.*;
 
 public class JsonFormatChunkedInput implements ChunkedInput<ByteBuf> {
     private enum State {
@@ -37,7 +37,7 @@ public class JsonFormatChunkedInput implements ChunkedInput<ByteBuf> {
         UNTYPED;
 
         void write(final ByteBuf buffer) {
-            JsonFragment.writeAsciiString(buffer, name());
+            Json.writeAsciiString(buffer, name());
         }
     }
 
@@ -85,25 +85,86 @@ public class JsonFormatChunkedInput implements ChunkedInput<ByteBuf> {
     }
 
 
+    static final class Json {
+        enum Token {
+            OBJECT_START('{'),
+            OBJECT_END('}'),
+            ARRAY_START('['),
+            ARRAY_END(']'),
+            DOUBLE_QUOTE('"'),
+            COMMA(','),
+            COLON(':');
+
+            final byte encoded;
+
+            Token(final char c) {
+                this.encoded = (byte) c;
+            }
+
+            void write(final ByteBuf buffer) {
+                buffer.writeByte(encoded);
+            }
+        }
+
+        private static void writeNull(final ByteBuf buffer) {
+            ByteBufUtil.writeAscii(buffer, "null");
+        }
+
+        private static void writeAsciiString(final ByteBuf buffer, final String key) {
+            Token.DOUBLE_QUOTE.write(buffer);
+            ByteBufUtil.writeAscii(buffer, key);
+            Token.DOUBLE_QUOTE.write(buffer);
+        }
+
+        private static void writeUtf8String(final ByteBuf buffer, final String key) {
+            Token.DOUBLE_QUOTE.write(buffer);
+            ByteBufUtil.writeUtf8(buffer, key);
+            Token.DOUBLE_QUOTE.write(buffer);
+        }
+
+        private static void writeObjectKey(final ByteBuf buffer, final String key) {
+            writeAsciiString(buffer, key);
+            Token.COLON.write(buffer);
+        }
+
+        private static void writeFloat(final ByteBuf buffer, final float f) {
+            if (Float.isNaN(f)) {
+                writeAsciiString(buffer, "NaN");
+                return;
+            }
+
+            if (Float.isInfinite(f)) {
+                writeAsciiString(buffer, (f < 0 ? "-Inf" : "+Inf"));
+                return;
+            }
+
+            Floats.writeFloatString(buffer, f);
+        }
+
+        private static void writeLong(final ByteBuf buffer, final long l) {
+            ByteBufUtil.writeAscii(buffer, Long.toString(l));
+        }
+    }
+
     public static ByteBuf formatLabels(final Map<String, String> labels) {
         final ByteBuf buffer = Unpooled.buffer();
 
-        JsonToken.OBJECT_START.write(buffer);
+        Json.Token.OBJECT_START.write(buffer);
 
         final Iterator<Map.Entry<String, String>> labelsIterator = labels.entrySet().iterator();
 
         while (labelsIterator.hasNext()) {
             final Map.Entry<String, String> label = labelsIterator.next();
 
-            writeObjectKey(buffer, label.getKey());
-            writeUtf8String(buffer, JSON_STRING_ESCAPER.escape(label.getValue()));
+            Json.writeObjectKey(buffer, label.getKey());
+            Json.writeUtf8String(buffer, JSON_STRING_ESCAPER.escape(label.getValue()));
 
             if (labelsIterator.hasNext()) {
-                JsonToken.COMMA.write(buffer);
+                Json.Token.COMMA.write(buffer);
             }
         }
 
-        JsonToken.OBJECT_END.write(buffer);
+        Json.Token.OBJECT_END.write(buffer);
 
         return buffer;
     }
@@ -115,24 +176,24 @@ public class JsonFormatChunkedInput implements ChunkedInput<ByteBuf> {
 
         class HeaderVisitor implements MetricFamilyVisitor<Consumer<ByteBuf>> {
             private void writeFamilyHeader(final MetricFamily<?> metricFamily, final ByteBuf buffer, final MetricFamilyType type) {
-                writeObjectKey(buffer, metricFamily.name);
+                Json.writeObjectKey(buffer, metricFamily.name);
 
-                JsonToken.OBJECT_START.write(buffer);
+                Json.Token.OBJECT_START.write(buffer);
 
-                writeObjectKey(buffer, "type");
+                Json.writeObjectKey(buffer, "type");
                 type.write(buffer);
 
                 if (includeHelp && metricFamily.help != null) {
-                    JsonToken.COMMA.write(buffer);
+                    Json.Token.COMMA.write(buffer);
 
-                    writeObjectKey(buffer, "help");
-                    writeUtf8String(buffer, JSON_STRING_ESCAPER.escape(metricFamily.help));
+                    Json.writeObjectKey(buffer, "help");
+                    Json.writeUtf8String(buffer, JSON_STRING_ESCAPER.escape(metricFamily.help));
                 }
 
-                JsonToken.COMMA.write(buffer);
+                Json.Token.COMMA.write(buffer);
 
-                writeObjectKey(buffer, "metrics");
-                JsonToken.ARRAY_START.write(buffer);
+                Json.writeObjectKey(buffer, "metrics");
+                Json.Token.ARRAY_START.write(buffer);
             }
 
             private Consumer<ByteBuf> forType(final MetricFamily<?> metricFamily, final MetricFamilyType type) {
@@ -173,23 +234,23 @@ public class JsonFormatChunkedInput implements ChunkedInput<ByteBuf> {
                     if (metricIterator.hasNext()) {
                         final T metric = metricIterator.next();
 
-                        JsonToken.OBJECT_START.write(buffer);
-                        writeObjectKey(buffer, "labels");
+                        Json.Token.OBJECT_START.write(buffer);
+                        Json.writeObjectKey(buffer, "labels");
                         if (metric.labels != null) {
                             buffer.writeBytes(metric.labels.asJSONFormatUTF8EncodedByteBuf().slice());
                         } else {
-                            writeNull(buffer);
+                            Json.writeNull(buffer);
                         }
 
-                        JsonToken.COMMA.write(buffer);
+                        Json.Token.COMMA.write(buffer);
 
-                        writeObjectKey(buffer, "value");
+                        Json.writeObjectKey(buffer, "value");
                         valueWriter.accept(metric, buffer);
 
-                        JsonToken.OBJECT_END.write(buffer);
+                        Json.Token.OBJECT_END.write(buffer);
 
                         if (metricIterator.hasNext()) {
-                            JsonToken.COMMA.write(buffer);
+                            Json.Token.COMMA.write(buffer);
                         }
 
                         return true;
@@ -202,82 +263,82 @@ public class JsonFormatChunkedInput implements ChunkedInput<ByteBuf> {
             @Override
             public Function<ByteBuf, Boolean> visit(final CounterMetricFamily metricFamily) {
                 return metricWriter(metricFamily, (counter, buffer) -> {
-                    writeFloat(buffer, counter.value);
+                    Json.writeFloat(buffer, counter.value);
                 });
             }
 
             @Override
             public Function<ByteBuf, Boolean> visit(final GaugeMetricFamily metricFamily) {
                 return metricWriter(metricFamily, (gauge, buffer) -> {
-                    writeFloat(buffer, gauge.value);
+                    Json.writeFloat(buffer, gauge.value);
                 });
             }
 
             private void writeSumAndCount(final ByteBuf buffer, final float sum, final float count) {
-                writeObjectKey(buffer, "sum");
-                writeFloat(buffer, sum);
+                Json.writeObjectKey(buffer, "sum");
+                Json.writeFloat(buffer, sum);
 
-                JsonToken.COMMA.write(buffer);
+                Json.Token.COMMA.write(buffer);
 
-                writeObjectKey(buffer, "count");
-                writeFloat(buffer, count);
+                Json.writeObjectKey(buffer, "count");
+                Json.writeFloat(buffer, count);
             }
 
-            private void writeIntervals(final ByteBuf buffer, final Iterable<Interval> intervals) {
-                JsonToken.OBJECT_START.write(buffer);
+            private void writeIntervals(final ByteBuf buffer, final Stream<Interval> intervals) {
+                Json.Token.OBJECT_START.write(buffer);
 
                 final Iterator<Interval> iterator = intervals.iterator();
 
                 while (iterator.hasNext()) {
                     final Interval interval = iterator.next();
 
-                    writeObjectKey(buffer, interval.quantile.toString());
-                    writeFloat(buffer, interval.value);
+                    Json.writeObjectKey(buffer, interval.quantile.toString());
+                    Json.writeFloat(buffer, interval.value);
 
                     if (iterator.hasNext()) {
-                        JsonToken.COMMA.write(buffer);
+                        Json.Token.COMMA.write(buffer);
                     }
                 }
 
-                JsonToken.OBJECT_END.write(buffer);
+                Json.Token.OBJECT_END.write(buffer);
             }
 
             @Override
             public Function<ByteBuf, Boolean> visit(final SummaryMetricFamily metricFamily) {
                 return metricWriter(metricFamily, (summary, buffer) -> {
-                    JsonToken.OBJECT_START.write(buffer);
+                    Json.Token.OBJECT_START.write(buffer);
 
                     writeSumAndCount(buffer, summary.sum, summary.count);
 
-                    JsonToken.COMMA.write(buffer);
+                    Json.Token.COMMA.write(buffer);
 
-                    writeObjectKey(buffer, "quantiles");
+                    Json.writeObjectKey(buffer, "quantiles");
                     writeIntervals(buffer, summary.quantiles);
 
-                    JsonToken.OBJECT_END.write(buffer);
+                    Json.Token.OBJECT_END.write(buffer);
                 });
             }
 
             @Override
             public Function<ByteBuf, Boolean> visit(final HistogramMetricFamily metricFamily) {
                 return metricWriter(metricFamily, (histogram, buffer) -> {
-                    JsonToken.OBJECT_START.write(buffer);
+                    Json.Token.OBJECT_START.write(buffer);
 
                     writeSumAndCount(buffer, histogram.sum, histogram.count);
 
-                    JsonToken.COMMA.write(buffer);
+                    Json.Token.COMMA.write(buffer);
 
-                    writeObjectKey(buffer, "buckets");
+                    Json.writeObjectKey(buffer, "buckets");
                     writeIntervals(buffer, histogram.buckets);
 
-                    JsonToken.OBJECT_END.write(buffer);
+                    Json.Token.OBJECT_END.write(buffer);
                 });
             }
 
             @Override
             public Function<ByteBuf, Boolean> visit(final UntypedMetricFamily metricFamily) {
                 return metricWriter(metricFamily, (untyped, buffer) -> {
-                    writeFloat(buffer, untyped.value);
+                    Json.writeFloat(buffer, untyped.value);
                 });
             }
         }
@@ -292,8 +353,8 @@ public class JsonFormatChunkedInput implements ChunkedInput<ByteBuf> {
         }
 
         void writeFamilyFooter(final ByteBuf buffer) {
-            JsonToken.ARRAY_END.write(buffer);
-            JsonToken.OBJECT_END.write(buffer);
+            Json.Token.ARRAY_END.write(buffer);
+            Json.Token.OBJECT_END.write(buffer);
         }
 
         boolean writeMetric(final ByteBuf buffer) {
@@ -302,22 +363,22 @@ public class JsonFormatChunkedInput implements ChunkedInput<ByteBuf> {
     }
 
     private void writeStatistics(final ByteBuf chunkBuffer) {
-        JsonToken.OBJECT_START.write(chunkBuffer);
+        Json.Token.OBJECT_START.write(chunkBuffer);
 
-        writeObjectKey(chunkBuffer, "expositionTime");
-        writeLong(chunkBuffer, stopwatch.elapsed(TimeUnit.MILLISECONDS));
+        Json.writeObjectKey(chunkBuffer, "expositionTime");
+        Json.writeLong(chunkBuffer, stopwatch.elapsed(TimeUnit.MILLISECONDS));
 
-        JsonToken.COMMA.write(chunkBuffer);
+        Json.Token.COMMA.write(chunkBuffer);
 
-        writeObjectKey(chunkBuffer, "metricFamilyCount");
-        writeLong(chunkBuffer, metricFamilyCount);
+        Json.writeObjectKey(chunkBuffer, "metricFamilyCount");
+        Json.writeLong(chunkBuffer, metricFamilyCount);
 
-        JsonToken.COMMA.write(chunkBuffer);
+        Json.Token.COMMA.write(chunkBuffer);
 
-        writeObjectKey(chunkBuffer, "metricCount");
-        writeLong(chunkBuffer, metricCount);
+        Json.writeObjectKey(chunkBuffer, "metricCount");
+        Json.writeLong(chunkBuffer, metricCount);
 
-        JsonToken.OBJECT_END.write(chunkBuffer);
+        Json.Token.OBJECT_END.write(chunkBuffer);
     }
 
     private void nextSlice(final ByteBuf chunkBuffer) {
@@ -325,20 +386,20 @@ public class JsonFormatChunkedInput implements ChunkedInput<ByteBuf> {
             case HEADER:
                 stopwatch.start();
 
-                JsonToken.OBJECT_START.write(chunkBuffer);
+                Json.Token.OBJECT_START.write(chunkBuffer);
 
-                writeObjectKey(chunkBuffer, "timestamp");
-                writeLong(chunkBuffer, timestamp.toEpochMilli());
+                Json.writeObjectKey(chunkBuffer, "timestamp");
+                Json.writeLong(chunkBuffer, timestamp.toEpochMilli());
 
-                JsonToken.COMMA.write(chunkBuffer);
+                Json.Token.COMMA.write(chunkBuffer);
 
-                writeObjectKey(chunkBuffer, "globalLabels");
+                Json.writeObjectKey(chunkBuffer, "globalLabels");
                 chunkBuffer.writeBytes(globalLabels.asJSONFormatUTF8EncodedByteBuf().slice());
 
-                JsonToken.COMMA.write(chunkBuffer);
+                Json.Token.COMMA.write(chunkBuffer);
 
-                writeObjectKey(chunkBuffer, "metricFamilies");
-                JsonToken.OBJECT_START.write(chunkBuffer);
+                Json.writeObjectKey(chunkBuffer, "metricFamilies");
+                Json.Token.OBJECT_START.write(chunkBuffer);
 
                 state = State.METRIC_FAMILY;
                 return;
@@ -365,7 +426,7 @@ public class JsonFormatChunkedInput implements ChunkedInput<ByteBuf> {
                     metricFamilyWriter.writeFamilyFooter(chunkBuffer);
 
                     if (metricFamilyIterator.hasNext()) {
-                        JsonToken.COMMA.write(chunkBuffer);
+                        Json.Token.COMMA.write(chunkBuffer);
                     }
 
                     state = State.METRIC_FAMILY;
@@ -379,14 +440,14 @@ public class JsonFormatChunkedInput implements ChunkedInput<ByteBuf> {
             case FOOTER:
                 stopwatch.stop();
 
-                JsonToken.OBJECT_END.write(chunkBuffer); // end of "metricFamilies"
+                Json.Token.OBJECT_END.write(chunkBuffer); // end of "metricFamilies"
 
-                JsonToken.COMMA.write(chunkBuffer);
+                Json.Token.COMMA.write(chunkBuffer);
 
-                writeObjectKey(chunkBuffer, "statistics");
+                Json.writeObjectKey(chunkBuffer, "statistics");
                 writeStatistics(chunkBuffer);
 
-                JsonToken.OBJECT_END.write(chunkBuffer); // end of main object
+                Json.Token.OBJECT_END.write(chunkBuffer); // end of main object
 
                 state = State.EOF;
                 return;
@@ -405,13 +466,7 @@ public class JsonFormatChunkedInput implements ChunkedInput<ByteBuf> {
 
         // add slices till we hit the chunk size (or slightly over it), or hit EOF
         while (chunkBuffer.readableBytes() < 1024 * 1024 && state != State.EOF) {
-            try {
-                nextSlice(chunkBuffer);
-
-            } catch (final Exception e) {
-                chunkBuffer.release();
-                throw e;
-            }
+            nextSlice(chunkBuffer);
         }
 
         return chunkBuffer;
