@@ -179,6 +179,22 @@ public class FactoriesSupplier implements Supplier<List<Factory>> {
                 .build();
     }
 
+
+    private Factory clientStreamingMetricFactory(final FactoryBuilder.CollectorConstructor collectorConstructor, final String jmxName, final String familyNameSuffix, final String help) {
+        final ObjectName objectNamePattern = format("org.apache.cassandra.metrics:type=Streaming,name=%s,scope=*", jmxName);
+        final String metricFamilyName = String.format("stream_%s", familyNameSuffix);
+
+        return new FactoryBuilder(collectorConstructor, objectNamePattern, metricFamilyName)
+                .withHelp(help)
+                .withModifier((keyPropertyList, labels) -> {
+                    final String scope = keyPropertyList.get("scope");
+                    labels.put("ip", scope);
+                    return true;
+                })
+                .build();
+
+    }
+
     private Factory clientRequestMetricFactory(final FactoryBuilder.CollectorConstructor collectorConstructor, final String jmxName, final String familyNameSuffix, final String help) {
         final ObjectName objectNamePattern = format("org.apache.cassandra.metrics:type=ClientRequest,name=%s,scope=*", jmxName);
         final String metricFamilyName = String.format("client_request_%s", familyNameSuffix);
@@ -797,6 +813,12 @@ public class FactoriesSupplier implements Supplier<List<Factory>> {
             builder.add(threadPoolMetric(functionalCollectorConstructor(counterAsCounter()), "TotalBlockedTasks", "blocked_tasks_total", null));
             builder.add(threadPoolMetric(functionalCollectorConstructor(counterAsGauge()), "CurrentlyBlockedTasks", "blocked_tasks", null));
             builder.add(threadPoolMetric(functionalCollectorConstructor(numericGaugeAsGauge()), "MaxPoolSize", "maximum_tasks", null));
+        }
+
+        // org.apache.cassandra.metrics.Streaming
+        {
+            builder.add(clientStreamingMetricFactory(functionalCollectorConstructor(counterAsCounter()), "IncomingBytes", "incoming_bytes", "Streaming incoming bytes"));
+            builder.add(clientStreamingMetricFactory(functionalCollectorConstructor(counterAsCounter()), "OutgoingBytes", "outgoing_bytes", "Streaming outgoing bytes"));
         }
 
 
