@@ -13,6 +13,8 @@ import com.zegelin.cassandra.exporter.collector.jvm.*;
 import com.zegelin.prometheus.domain.Labels;
 
 import javax.management.*;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -188,7 +190,12 @@ public class FactoriesSupplier implements Supplier<List<Factory>> {
                 .withHelp(help)
                 .withModifier((keyPropertyList, labels) -> {
                     final String scope = keyPropertyList.get("scope");
-                    labels.put("ip", scope);
+                    labels.put("partner_endpoint", scope);
+                    try {
+                        labels.put("partner_hostname", InetAddress.getByName(scope).getHostName());
+                    } catch (UnknownHostException e) {
+                        // Skip hostname if it cannot be resolved
+                    }
                     return true;
                 })
                 .build();
