@@ -181,6 +181,13 @@ public class FactoriesSupplier implements Supplier<List<Factory>> {
                 .build();
     }
 
+    private Optional<String> getHostname(String ip) {
+        try {
+            return Optional.of(InetAddress.getByName(ip).getHostName());
+        } catch (UnknownHostException e) {
+            return Optional.empty();
+        }
+    }
 
     private Factory clientStreamingMetricFactory(final FactoryBuilder.CollectorConstructor collectorConstructor, final String jmxName, final String familyNameSuffix, final String help) {
         final ObjectName objectNamePattern = format("org.apache.cassandra.metrics:type=Streaming,name=%s,scope=*", jmxName);
@@ -191,11 +198,7 @@ public class FactoriesSupplier implements Supplier<List<Factory>> {
                 .withModifier((keyPropertyList, labels) -> {
                     final String scope = keyPropertyList.get("scope");
                     labels.put("partner_endpoint", scope);
-                    try {
-                        labels.put("partner_hostname", InetAddress.getByName(scope).getHostName());
-                    } catch (UnknownHostException e) {
-                        // Skip hostname if it cannot be resolved
-                    }
+                    getHostname(scope).ifPresent(hostname -> labels.put("partner_hostname", hostname));
                     return true;
                 })
                 .build();
